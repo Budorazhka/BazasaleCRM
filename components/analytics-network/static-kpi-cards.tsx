@@ -1,4 +1,4 @@
-// [DOC-RU]
+﻿// [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
 // Смысл файла: карточки статических KPI (накопительные значения); если ты меняешь подписи, синхронизируй с продуктовой терминологией.
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
@@ -66,7 +66,7 @@ export function StaticKpiCards({ data, referralsLabel = "Рефералы L1", s
                             </div>
                             <div className="min-w-0">
                                 <p className="truncate text-xs text-muted-foreground">{kpi.label}</p>
-                                <p className="text-lg font-semibold">{value.toLocaleString("ru-RU")}</p>
+                                <p className="text-lg font-medium">{value.toLocaleString("ru-RU")}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -75,3 +75,4 @@ export function StaticKpiCards({ data, referralsLabel = "Рефералы L1", s
         </div>
     );
 }
+

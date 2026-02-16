@@ -1,4 +1,4 @@
-// [DOC-RU]
+﻿// [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
 // Смысл файла: ячейка участника с онлайн-статусом; если ты меняешь статусную логику, держи ее одинаковой с сервером.
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
@@ -32,7 +32,7 @@ export function ParticipantCell({ partner }: ParticipantCellProps) {
                 </div>
                 <div className="flex items-center gap-1.5 text-xs">
                     {partner.isOnline ? (
-                        <span className="font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                        <span className="font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
                             Онлайн
                         </span>
                     ) : (
@@ -79,3 +79,4 @@ function getMarkerMeta(marker: ActivityMarker): { textClassName: string } {
         textClassName: "text-red-600 dark:text-red-400",
     };
 }
+

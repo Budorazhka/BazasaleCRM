@@ -24,9 +24,13 @@ export function PeriodTabs({ selectedPeriod, onPeriodChange }: PeriodTabsProps) 
             value={selectedPeriod}
             onValueChange={(value) => onPeriodChange(value as AnalyticsPeriod)}
         >
-            <TabsList className="h-auto flex-wrap justify-start">
+            <TabsList className="h-auto w-full flex-wrap justify-start">
                 {periods.map((period) => (
-                    <TabsTrigger key={period.value} value={period.value} className="text-xs sm:text-sm">
+                    <TabsTrigger
+                        key={period.value}
+                        value={period.value}
+                        className="px-2 text-sm font-normal whitespace-normal leading-tight sm:text-base sm:whitespace-nowrap"
+                    >
                         {period.label}
                     </TabsTrigger>
                 ))}

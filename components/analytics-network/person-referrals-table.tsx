@@ -88,7 +88,7 @@ export function PersonReferralsTable({
                                         <MessageCircle className="h-3.5 w-3.5 text-cyan-500" />
                                         {partner.chatOpens.toLocaleString("ru-RU")}
                                     </span>
-                                    <span className="inline-flex items-center gap-1" title="Подборки">
+                                    <span className="inline-flex items-center gap-1" title="Рассылки">
                                         <LayoutList className="h-3.5 w-3.5 text-pink-500" />
                                         {partner.selectionsCreated.toLocaleString("ru-RU")}
                                     </span>
@@ -145,7 +145,7 @@ export function PersonReferralsTable({
                                                         {partner.chatOpens.toLocaleString("ru-RU")}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-1" title="Подборки">
+                                                <div className="flex items-center gap-1" title="Рассылки">
                                                     <LayoutList className="h-3.5 w-3.5 text-pink-500" />
                                                     <span className="text-sm">
                                                         {partner.selectionsCreated.toLocaleString("ru-RU")}

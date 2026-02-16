@@ -57,11 +57,11 @@ export function TopReferralsChart({ partners, period, onPeriodChange }: TopRefer
     return (
         <Card className="w-full">
             <CardHeader className="px-4 pb-2 pt-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-col gap-1">
-                        <CardTitle className="text-sm font-medium">Топ-5 партнёров по лидам</CardTitle>
+                <div className="flex flex-col items-center gap-3">
+                    <div className="flex flex-col items-center gap-1">
+                        <CardTitle className="text-center text-sm">Топ-5 партнёров по лидам</CardTitle>
                         <span className="text-xs text-muted-foreground">
-                            Всего: <span className="font-semibold">{totalLeads.toLocaleString("ru-RU")}</span>
+                            Всего: <span className="font-medium">{totalLeads.toLocaleString("ru-RU")}</span>
                         </span>
                     </div>
                     <Tabs value={period} onValueChange={(v) => onPeriodChange(v as AnalyticsPeriod)} className="h-auto">
@@ -70,7 +70,7 @@ export function TopReferralsChart({ partners, period, onPeriodChange }: TopRefer
                                 <TabsTrigger
                                     key={p.value}
                                     value={p.value}
-                                    className="h-6 px-2 text-[11px] data-[state=active]:bg-background"
+                                    className="h-7 px-2.5 text-sm font-normal data-[state=active]:bg-background"
                                 >
                                     {p.label}
                                 </TabsTrigger>

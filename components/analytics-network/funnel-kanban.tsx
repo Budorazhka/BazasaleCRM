@@ -24,31 +24,37 @@ interface FunnelKanbanProps {
     funnels: FunnelBoard[];
 }
 
-const columnToneById: Record<string, { pill: string; bar: string }> = {
-    rejection: {
-        pill: "bg-red-500/10 text-red-700 dark:text-red-300",
-        bar: "bg-red-500",
-    },
-    in_progress: {
-        pill: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-        bar: "bg-blue-500",
-    },
-    preparation: {
-        pill: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-        bar: "bg-amber-500",
-    },
-    success: {
-        pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-        bar: "bg-emerald-500",
-    },
-    active: {
-        pill: "bg-teal-500/10 text-teal-700 dark:text-teal-300",
-        bar: "bg-teal-500",
-    },
-};
+function getColumnTone({
+    boardId,
+    columnId,
+    isFinalColumn,
+}: {
+    boardId: FunnelBoard["id"];
+    columnId: string;
+    isFinalColumn: boolean;
+}) {
+    if (columnId === "rejection") {
+        return {
+            pill: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+            bar: "bg-blue-500",
+        };
+    }
 
-function getColumnTone(columnId: string) {
-    return columnToneById[columnId] ?? {
+    if (columnId === "success" || (boardId !== "sales" && isFinalColumn)) {
+        return {
+            pill: "bg-yellow-400/20 text-yellow-700 dark:text-yellow-300",
+            bar: "bg-yellow-500",
+        };
+    }
+
+    if (columnId === "in_progress" || columnId === "preparation" || columnId === "active") {
+        return {
+            pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+            bar: "bg-emerald-500",
+        };
+    }
+
+    return {
         pill: "bg-muted text-muted-foreground",
         bar: "bg-primary",
     };
@@ -112,6 +118,7 @@ function ConversionsDropdown({ board }: { board: FunnelBoard }) {
         { label: "Новый лид → Презентация", from: "Новый лид", to: "Презентовали компанию" },
         { label: "Презентация → Показ", from: "Презентовали компанию", to: "Показ" },
         { label: "Показ → Сделка", from: "Показ", to: "Заключен договор" },
+        { label: "Лид → Сделка", from: "Новый лид", to: "Заключен договор" },
     ];
 
     return (
@@ -128,7 +135,7 @@ function ConversionsDropdown({ board }: { board: FunnelBoard }) {
                     return (
                         <DropdownMenuItem key={idx} className="flex justify-between gap-2">
                             <span className="truncate text-muted-foreground">{item.label}</span>
-                            <span className="font-bold">{val}%</span>
+                            <span className="font-medium">{val}%</span>
                         </DropdownMenuItem>
                     );
                 })}
@@ -154,14 +161,14 @@ export function FunnelKanban({ funnels }: FunnelKanbanProps) {
             <Tabs defaultValue={funnels[0].id}>
                 <CardHeader className="gap-3">
                     <div className="space-y-1 text-center">
-                        <CardTitle>Воронки в канбане</CardTitle>
+                        <CardTitle className="text-base font-medium sm:text-lg">Воронки в канбане</CardTitle>
                         <CardDescription>
                             Все этапы отражены полностью.
                         </CardDescription>
                     </div>
-                    <TabsList className="h-auto flex-wrap justify-start">
+                    <TabsList className="h-auto w-full flex-wrap justify-center">
                         {funnels.map((board) => (
-                            <TabsTrigger key={board.id} value={board.id}>
+                            <TabsTrigger key={board.id} value={board.id} className="text-center text-sm font-medium whitespace-normal leading-tight sm:text-base sm:whitespace-nowrap">
                                 {board.shortName}
                             </TabsTrigger>
                         ))}
@@ -180,8 +187,13 @@ export function FunnelKanban({ funnels }: FunnelKanbanProps) {
                                 <ConversionsDropdown board={board} />
                             </div>
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                {board.columns.map((column) => (
-                                    <FunnelColumnCard key={`${board.id}-${column.id}`} column={column} />
+                                {board.columns.map((column, columnIndex) => (
+                                    <FunnelColumnCard
+                                        key={`${board.id}-${column.id}`}
+                                        boardId={board.id}
+                                        column={column}
+                                        isFinalColumn={columnIndex === board.columns.length - 1}
+                                    />
                                 ))}
                             </div>
                         </TabsContent>
@@ -192,14 +204,22 @@ export function FunnelKanban({ funnels }: FunnelKanbanProps) {
     );
 }
 
-function FunnelColumnCard({ column }: { column: FunnelColumn }) {
-    const tone = getColumnTone(column.id);
+function FunnelColumnCard({
+    boardId,
+    column,
+    isFinalColumn,
+}: {
+    boardId: FunnelBoard["id"];
+    column: FunnelColumn;
+    isFinalColumn: boolean;
+}) {
+    const tone = getColumnTone({ boardId, columnId: column.id, isFinalColumn });
     const maxStageCount = Math.max(...column.stages.map((stage) => stage.count), 1);
 
     return (
         <div className="rounded-xl border bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{column.name}</p>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+                <p className="min-w-0 break-words text-sm font-medium">{column.name}</p>
                 <Badge className={cn("shadow-none", tone.pill)}>
                     {column.count.toLocaleString("ru-RU")}
                 </Badge>
@@ -210,12 +230,12 @@ function FunnelColumnCard({ column }: { column: FunnelColumn }) {
                     const width = Math.max(6, Math.round((stage.count / maxStageCount) * 100));
                     return (
                         <div key={stage.id} className="rounded-lg border bg-background p-2">
-                            <div className="flex items-start justify-between gap-2">
-                                <div>
+                            <div className="flex min-w-0 items-start justify-between gap-2">
+                                <div className="min-w-0">
                                     <p className="text-[11px] text-muted-foreground">Этап {stage.order}</p>
-                                    <p className="text-sm leading-tight">{stage.name}</p>
+                                    <p className="break-words text-sm leading-tight">{stage.name}</p>
                                 </div>
-                                <span className="text-sm font-semibold tabular-nums">
+                                <span className="text-sm font-medium tabular-nums">
                                     {stage.count.toLocaleString("ru-RU")}
                                 </span>
                             </div>
@@ -232,3 +252,7 @@ function FunnelColumnCard({ column }: { column: FunnelColumn }) {
         </div>
     );
 }
+
+
+
+

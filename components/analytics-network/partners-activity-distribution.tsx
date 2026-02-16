@@ -5,6 +5,7 @@
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
 
 
+import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -16,6 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HelpCircle } from "lucide-react";
 import { Pie, PieChart, Cell, Label } from "recharts";
+import { cn } from "@/lib/utils";
 import type { PartnerRow, AnalyticsPeriod, ActivityMarker } from "@/types/analytics";
 
 interface PartnersActivityDistributionProps {
@@ -46,7 +48,15 @@ const periods: { value: AnalyticsPeriod; label: string }[] = [
     { value: "allTime", label: "За всё время" },
 ];
 
+const segmentLabels: Record<string, string> = {
+    green: "активны",
+    yellow: "средние",
+    red: "пассивны",
+};
+
 export function PartnersActivityDistribution({ partners, period, onPeriodChange, onSegmentClick }: PartnersActivityDistributionProps) {
+    const [highlightedSegment, setHighlightedSegment] = useState<string | null>(null);
+
     if (partners.length === 0) {
         return null;
     }
@@ -75,6 +85,13 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
     const totalPartners = partners.length;
     const activeCount = distribution.find((d) => d.key === "green")?.value || 0;
     const activePercent = totalPartners > 0 ? Math.round((activeCount / totalPartners) * 100) : 0;
+
+    const currentSegmentKey = highlightedSegment ?? "green";
+    const currentSegment = distribution.find((d) => d.key === currentSegmentKey);
+    const centerPercent = totalPartners > 0 && currentSegment
+        ? Math.round((currentSegment.value / totalPartners) * 100)
+        : activePercent;
+    const centerLabel = segmentLabels[currentSegmentKey] ?? "активны";
     const riskPartners = partners.filter((partner) =>
         period === "week" ? partner.onlineDaysLast7 === 0 : partner.activityMarker === "red"
     );
@@ -84,11 +101,11 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
 
     return (
         <Card className="w-full">
-            <CardHeader className="px-4 pb-2 pt-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5">
-                            <CardTitle className="text-sm font-medium">Распределение активности партнёров</CardTitle>
+            <CardHeader className="px-2 pb-2 pt-3 sm:px-4">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center justify-center gap-1.5">
+                            <CardTitle className="text-center text-xs sm:text-sm">Распределение активности партнёров</CardTitle>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -101,15 +118,15 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="max-w-[280px]">
                                     <div className="space-y-1 text-xs">
-                                        <p><span className="font-semibold">🟢 Активные:</span> работали в платформе или CRM более 20 минут</p>
-                                        <p><span className="font-semibold">🟡 Средние:</span> заходили, но активность минимальная (1-20 мин)</p>
-                                        <p><span className="font-semibold">🔴 Пассивные:</span> не проявляли активности</p>
+                                        <p><span className="font-medium">🟢 Активные:</span> работали в платформе или CRM более 20 минут</p>
+                                        <p><span className="font-medium">🟡 Средние:</span> заходили, но активность минимальная (1-20 мин)</p>
+                                        <p><span className="font-medium">🔴 Пассивные:</span> не проявляли активности</p>
                                     </div>
                                 </TooltipContent>
                             </Tooltip>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                            Всего: <span className="font-semibold">{totalPartners.toLocaleString("ru-RU")}</span>
+                            Всего: <span className="font-medium">{totalPartners.toLocaleString("ru-RU")}</span>
                         </span>
                     </div>
                     <Tabs value={period} onValueChange={(v) => onPeriodChange(v as AnalyticsPeriod)} className="h-auto">
@@ -118,7 +135,7 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
                                 <TabsTrigger
                                     key={p.value}
                                     value={p.value}
-                                    className="h-6 px-2 text-[11px] data-[state=active]:bg-background"
+                                    className="h-7 px-2 text-xs font-normal data-[state=active]:bg-background sm:px-2.5 sm:text-sm"
                                 >
                                     {p.label}
                                 </TabsTrigger>
@@ -127,24 +144,30 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
                     </Tabs>
                 </div>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4 px-4 pb-4 pt-2 sm:flex-row sm:items-center sm:gap-6">
-                <ChartContainer config={chartConfig} className="mx-auto h-[220px] w-[220px] shrink-0 aspect-auto sm:mx-0 sm:h-[240px] sm:w-[240px]">
+            <CardContent className="flex flex-col gap-4 px-2 pb-4 pt-2 sm:flex-row sm:items-center sm:gap-6 sm:px-4">
+                <ChartContainer config={chartConfig} className="mx-auto aspect-square w-full max-w-[220px] shrink-0 sm:mx-0 sm:max-w-[240px]">
                     <PieChart>
                         <ChartTooltip content={<ChartTooltipContent />} />
                         <Pie
                             data={distribution}
                             dataKey="value"
                             nameKey="label"
-                            innerRadius={70}
-                            outerRadius={105}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius="32%"
+                            outerRadius="48%"
                             strokeWidth={0}
                         >
                             {distribution.map((item) => (
                                 <Cell
                                     key={item.key}
                                     fill={item.color}
-                                    className="cursor-pointer hover:opacity-80 transition-opacity"
-                                    onClick={() => onSegmentClick?.(item.key as ActivityMarker)}
+                                    className="cursor-pointer transition-opacity"
+                                    opacity={highlightedSegment && highlightedSegment !== item.key ? 0.35 : 1}
+                                    onClick={() => {
+                                        setHighlightedSegment((prev) => prev === item.key ? null : item.key);
+                                        onSegmentClick?.(item.key as ActivityMarker);
+                                    }}
                                 />
                             ))}
                             <Label
@@ -160,16 +183,16 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
                                                 <tspan
                                                     x={viewBox.cx}
                                                     y={viewBox.cy}
-                                                    className="fill-foreground text-2xl font-bold"
+                                                    className="fill-foreground text-xl font-medium sm:text-2xl"
                                                 >
-                                                    {activePercent}%
+                                                    {centerPercent}%
                                                 </tspan>
                                                 <tspan
                                                     x={viewBox.cx}
-                                                    y={(viewBox.cy || 0) + 20}
-                                                    className="fill-muted-foreground text-xs"
+                                                    y={(viewBox.cy || 0) + 16}
+                                                    className="fill-muted-foreground text-[10px] sm:text-xs"
                                                 >
-                                                    активны
+                                                    {centerLabel}
                                                 </tspan>
                                             </text>
                                         );
@@ -183,25 +206,36 @@ export function PartnersActivityDistribution({ partners, period, onPeriodChange,
                     <div className="space-y-2">
                         {distribution.map((item) => {
                             const percent = totalPartners > 0 ? Math.round((item.value / totalPartners) * 100) : 0;
+                            const isSelected = highlightedSegment === item.key;
                             return (
                                 <div
                                     key={item.key}
-                                    className="flex items-center gap-2 text-xs cursor-pointer hover:opacity-80 transition-opacity"
-                                    onClick={() => onSegmentClick?.(item.key as ActivityMarker)}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-md px-2 py-1 text-xs cursor-pointer transition-all",
+                                        isSelected
+                                            ? "bg-accent/60 font-medium"
+                                            : highlightedSegment
+                                              ? "opacity-50 hover:opacity-80"
+                                              : "hover:bg-accent/30"
+                                    )}
+                                    onClick={() => {
+                                        setHighlightedSegment((prev) => prev === item.key ? null : item.key);
+                                        onSegmentClick?.(item.key as ActivityMarker);
+                                    }}
                                 >
-                                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                                    <span className="text-muted-foreground">{item.label}</span>
+                                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                                    <span className={isSelected ? "text-foreground" : "text-muted-foreground"}>{item.label}</span>
                                     <span className="ml-auto font-medium">{percent}%</span>
                                 </div>
                             );
                         })}
                     </div>
-                    <div className="rounded-lg border bg-muted/30 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-medium">Партнёры в зоне риска</p>
-                            <span className="text-xs font-semibold">{riskCount.toLocaleString("ru-RU")} ({riskPercent}%)</span>
+                    <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3">
+                        <div className="flex items-center justify-between gap-1.5">
+                            <p className="text-[11px] font-medium sm:text-xs">Партнёры в зоне риска</p>
+                            <span className="text-[11px] font-medium sm:text-xs">{riskCount.toLocaleString("ru-RU")} ({riskPercent}%)</span>
                         </div>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
+                        <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
                             {period === "week"
                                 ? "В зоне риска: партнёры с 0 активных дней за последние 7 дней."
                                 : "В зоне риска: все пассивные партнёры за выбранный период."}

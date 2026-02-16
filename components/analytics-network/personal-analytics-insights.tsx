@@ -1,13 +1,13 @@
-"use client";
+﻿"use client";
 // [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
-// Смысл файла: блок план/факт и подсказки по личной аналитике; здесь важно не ломать расчёт процентов и целей.
+// Смысл файла: компактный блок план/факт и статус воронки в личной аналитике.
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
-
 
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     Dialog,
     DialogContent,
@@ -19,53 +19,98 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ActivityTimeseriesPoint, AnalyticsPeriod, DynamicKpi, FunnelBoard } from "@/types/analytics";
+import type { AnalyticsPeriod, DynamicKpi, FunnelBoard } from "@/types/analytics";
 import { cn } from "@/lib/utils";
+import { ConversionOverviewChart } from "@/components/analytics-network/conversion-overview-chart";
 
 interface PersonalAnalyticsInsightsProps {
     dynamicKpi: DynamicKpi;
-    activityData: ActivityTimeseriesPoint[];
     funnels: FunnelBoard[];
     period: AnalyticsPeriod;
-    range: { start: Date; end: Date };
     allowPlanEditing?: boolean;
 }
-
-type CalendarEntry = {
-    key: string;
-    labelShort: string;
-    labelLong: string;
-    dateNumber?: number;
-    total: number;
-    calls: number;
-    chats: number;
-    selections: number;
-};
 
 type PlanBucket = "week" | "month";
 type PlanMetricKey = "leads" | "contacts" | "deals";
 type PlanMetrics = Record<PlanMetricKey, number>;
 type PlanTargetsByBucket = Record<PlanBucket, PlanMetrics>;
+type PlanInputByBucket = Record<PlanBucket, Record<PlanMetricKey, string>>;
 
 const PLAN_STORAGE_KEY = "analytics.personal.planTargets.v1";
 
 const statusToneByColumn: Record<string, string> = {
-    rejection: "bg-rose-500",
-    in_progress: "bg-blue-500",
-    preparation: "bg-amber-500",
-    success: "bg-emerald-500",
-    active: "bg-teal-500",
+    rejection: "bg-blue-500",
+    in_progress: "bg-emerald-500",
+    preparation: "bg-emerald-500",
+    success: "bg-yellow-500",
+    active: "bg-emerald-500",
 };
 
+const statusHintByColumn: Record<string, string> = {
+    rejection: "отказ или заморозка",
+    in_progress: "лиды в активной работе",
+    preparation: "лиды на подготовке",
+    success: "финальный этап",
+    active: "лиды в активной работе",
+};
+
+const columnOrderPriority: Record<string, number> = {
+    rejection: 0,
+    in_progress: 1,
+    preparation: 1,
+    active: 1,
+    success: 2,
+};
+
+function isExcludedFromTopStage(stageName: string, columnId: string) {
+    const normalizedName = stageName.toLowerCase();
+    // "Отказ" и "Бракованный лид" не требуют дальнейших действий, поэтому не участвуют в топе застреваний.
+    return (
+        columnId === "rejection" ||
+        normalizedName.includes("отказ") ||
+        normalizedName.includes("бракован")
+    );
+}
+
 const metricLabels: Record<PlanMetricKey, string> = {
-    leads: "\u041d\u043e\u0432\u044b\u0435 \u043b\u0438\u0434\u044b",
-    contacts: "\u0410\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0438",
-    deals: "\u0421\u0434\u0435\u043b\u043a\u0438",
+    leads: "Новые лиды",
+    contacts: "Активности",
+    deals: "Сделки",
 };
 
 function normalizePlanValue(value: number) {
     if (!Number.isFinite(value)) return 0;
     return Math.max(0, Math.round(value));
+}
+
+function mapPlanTargetsToInputs(targets: PlanTargetsByBucket): PlanInputByBucket {
+    return {
+        week: {
+            leads: String(targets.week.leads),
+            contacts: String(targets.week.contacts),
+            deals: String(targets.week.deals),
+        },
+        month: {
+            leads: String(targets.month.leads),
+            contacts: String(targets.month.contacts),
+            deals: String(targets.month.deals),
+        },
+    };
+}
+
+function mapInputsToPlanTargets(inputs: PlanInputByBucket): PlanTargetsByBucket {
+    return {
+        week: {
+            leads: normalizePlanValue(Number(inputs.week.leads || 0)),
+            contacts: normalizePlanValue(Number(inputs.week.contacts || 0)),
+            deals: normalizePlanValue(Number(inputs.week.deals || 0)),
+        },
+        month: {
+            leads: normalizePlanValue(Number(inputs.month.leads || 0)),
+            contacts: normalizePlanValue(Number(inputs.month.contacts || 0)),
+            deals: normalizePlanValue(Number(inputs.month.deals || 0)),
+        },
+    };
 }
 
 function buildDefaultPlanTargets(dynamicKpi: DynamicKpi): PlanTargetsByBucket {
@@ -110,91 +155,10 @@ function getProgressTone(percent: number) {
     return "bg-rose-500";
 }
 
-function getDayIndexFromMonday(date: Date) {
-    const day = date.getDay();
-    return day === 0 ? 6 : day - 1;
-}
-
-function getTrafficTone(total: number) {
-    if (total === 0) {
-        return {
-            label: "\u041d\u0435\u0442 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439",
-            className:
-                "bg-rose-100/80 border-rose-300 text-rose-900 hover:bg-rose-100 dark:bg-rose-500/15 dark:border-rose-500/40 dark:text-rose-200",
-        };
-    }
-
-    if (total < 5) {
-        return {
-            label: "\u041d\u0438\u0437\u043a\u0430\u044f \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u044c",
-            className:
-                "bg-amber-100/80 border-amber-300 text-amber-900 hover:bg-amber-100 dark:bg-amber-500/15 dark:border-amber-500/40 dark:text-amber-200",
-        };
-    }
-
-    return {
-        label: "\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0439 \u0434\u0435\u043d\u044c",
-        className:
-            "bg-emerald-100/80 border-emerald-300 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:border-emerald-500/40 dark:text-emerald-200",
-    };
-}
-
-function buildCalendarEntries(
-    period: AnalyticsPeriod,
-    range: { start: Date; end: Date },
-    activityData: ActivityTimeseriesPoint[]
-): CalendarEntry[] {
-    if (period === "allTime") {
-        return activityData.slice(-12).map((point, index) => ({
-            key: `month-${index}`,
-            labelShort: point.date,
-            labelLong: point.date,
-            total: point.calls + point.chats + point.selections,
-            calls: point.calls,
-            chats: point.chats,
-            selections: point.selections,
-        }));
-    }
-
-    const entries: CalendarEntry[] = [];
-    const start = new Date(range.start);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(range.end);
-    end.setHours(0, 0, 0, 0);
-
-    let index = 0;
-    const cursor = new Date(start);
-    while (cursor <= end) {
-        const point = activityData[index];
-        const calls = point?.calls ?? 0;
-        const chats = point?.chats ?? 0;
-        const selections = point?.selections ?? 0;
-        const total = calls + chats + selections;
-
-        entries.push({
-            key: cursor.toISOString().slice(0, 10),
-            labelShort: cursor.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
-            labelLong: cursor.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" }),
-            dateNumber: cursor.getDate(),
-            total,
-            calls,
-            chats,
-            selections,
-        });
-
-        cursor.setDate(cursor.getDate() + 1);
-        index += 1;
-    }
-
-    return entries;
-}
-
 export function PersonalAnalyticsInsights({
     dynamicKpi,
-    activityData,
     funnels,
     period,
-    range,
     allowPlanEditing = true,
 }: PersonalAnalyticsInsightsProps) {
     const salesFunnel = funnels.find((funnel) => funnel.id === "sales") ?? funnels[0];
@@ -203,17 +167,19 @@ export function PersonalAnalyticsInsights({
     const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
     const [editBucket, setEditBucket] = useState<PlanBucket>("week");
     const [draftPlanTargets, setDraftPlanTargets] = useState<PlanTargetsByBucket>(defaultPlanTargets);
-    const [isActivityDrilldownOpen, setIsActivityDrilldownOpen] = useState(false);
+    const [draftPlanInputs, setDraftPlanInputs] = useState<PlanInputByBucket>(mapPlanTargetsToInputs(defaultPlanTargets));
 
     useEffect(() => {
         setPlanTargets((prev) => mergePlanTargets(defaultPlanTargets, prev));
         setDraftPlanTargets((prev) => mergePlanTargets(defaultPlanTargets, prev));
+        setDraftPlanInputs((prev) => mapPlanTargetsToInputs(mapInputsToPlanTargets(prev)));
     }, [defaultPlanTargets]);
 
     useEffect(() => {
         if (!allowPlanEditing) {
             setPlanTargets(defaultPlanTargets);
             setDraftPlanTargets(defaultPlanTargets);
+            setDraftPlanInputs(mapPlanTargetsToInputs(defaultPlanTargets));
             return;
         }
 
@@ -224,6 +190,7 @@ export function PersonalAnalyticsInsights({
             const merged = mergePlanTargets(defaultPlanTargets, parsed);
             setPlanTargets(merged);
             setDraftPlanTargets(merged);
+            setDraftPlanInputs(mapPlanTargetsToInputs(merged));
         } catch {
             // ignore localStorage parse issues
         }
@@ -252,56 +219,25 @@ export function PersonalAnalyticsInsights({
             percent,
         };
     });
+
     const overallProgressPercent = planRows.length
         ? Math.round(planRows.reduce((sum, row) => sum + row.percent, 0) / planRows.length)
         : 0;
-    const calendarEntries = useMemo(
-        () => buildCalendarEntries(period, range, activityData),
-        [period, range, activityData]
-    );
-    const dayOffset = useMemo(() => {
-        if (period === "allTime") return 0;
-        return getDayIndexFromMonday(range.start);
-    }, [period, range]);
+    const planGapRows = planRows.map((row) => ({
+        ...row,
+        remaining: Math.max(row.plan - row.fact, 0),
+        surplus: Math.max(row.fact - row.plan, 0),
+    }));
+    const completedMetricsCount = planGapRows.filter((row) => row.remaining === 0).length;
+    const totalRemaining = planGapRows.reduce((sum, row) => sum + row.remaining, 0);
+    const totalSurplus = planGapRows.reduce((sum, row) => sum + row.surplus, 0);
 
-    const [selectedEntryKey, setSelectedEntryKey] = useState<string | null>(null);
-    useEffect(() => {
-        setSelectedEntryKey(calendarEntries[0]?.key ?? null);
-    }, [calendarEntries]);
-
-    const selectedEntry =
-        calendarEntries.find((entry) => entry.key === selectedEntryKey) ?? calendarEntries[0] ?? null;
-    const openActivityDrilldown = (entryKey: string) => {
-        setSelectedEntryKey(entryKey);
-        setIsActivityDrilldownOpen(true);
-    };
-
-    const calendarCaption = useMemo(() => {
-        if (period === "allTime") return "\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 12 \u043c\u0435\u0441\u044f\u0446\u0435\u0432";
-        if (period === "week") {
-            const start = range.start.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-            const end = range.end.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-            return `${start} - ${end}`;
-        }
-        return range.start.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
-    }, [period, range]);
-
-    const weekDayLabels = ["\u041f\u043d", "\u0412\u0442", "\u0421\u0440", "\u0427\u0442", "\u041f\u0442", "\u0421\u0431", "\u0412\u0441"];
-
-    const stageRows = (salesFunnel?.columns ?? [])
-        .flatMap((column) =>
-            column.stages.map((stage) => ({
-                id: stage.id,
-                name: stage.name,
-                count: stage.count,
-                columnId: column.id,
-            }))
-        )
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 6);
-    const stageMax = Math.max(...stageRows.map((row) => row.count), 1);
-
-    const columnSegments = salesFunnel?.columns ?? [];
+    const columnSegments = [...(salesFunnel?.columns ?? [])].sort((a, b) => {
+        const aPriority = columnOrderPriority[a.id] ?? 99;
+        const bPriority = columnOrderPriority[b.id] ?? 99;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return b.count - a.count;
+    });
     const totalCount = salesFunnel?.totalCount ?? 0;
     const columnRows = columnSegments
         .map((segment) => ({
@@ -309,80 +245,135 @@ export function PersonalAnalyticsInsights({
             name: segment.name,
             count: segment.count,
             share: totalCount > 0 ? Math.round((segment.count / totalCount) * 100) : 0,
-        }))
-        .sort((a, b) => b.count - a.count);
+        }));
     const averageColumnLoad = columnRows.length > 0 ? Math.round(totalCount / columnRows.length) : 0;
+    const topStagesByFunnel = funnels.map((board) => {
+        const rows = board.columns
+            .flatMap((column) =>
+                column.stages.map((stage) => ({
+                    id: `${board.id}-${stage.id}`,
+                    name: stage.name,
+                    count: stage.count,
+                    columnId: column.id,
+                }))
+            )
+            .filter((row) => !isExcludedFromTopStage(row.name, row.columnId))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3)
+            .map((row) => ({
+                ...row,
+                share: board.totalCount > 0 ? Math.round((row.count / board.totalCount) * 100) : 0,
+            }));
+        return {
+            boardId: board.id,
+            boardName: board.name,
+            totalCount: board.totalCount,
+            rows,
+            maxCount: Math.max(...rows.map((row) => row.count), 1),
+        };
+    });
 
     return (
-        <div className="grid items-start gap-4 xl:grid-cols-2">
-            <Card className="xl:col-span-2">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2 xl:items-stretch">
+            <Card className="flex h-full min-w-0 flex-col">
                 <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-1">
-                            <CardTitle className="text-sm">{"\u041f\u043b\u0430\u043d/\u0444\u0430\u043a\u0442"}</CardTitle>
-                            <p className="text-xs text-muted-foreground">
-                                {activePlanBucket === "week"
-                                    ? "\u041f\u043b\u0430\u043d \u043d\u0430 \u043d\u0435\u0434\u0435\u043b\u044e"
-                                    : "\u041f\u043b\u0430\u043d \u043d\u0430 \u043c\u0435\u0441\u044f\u0446"}
+                    <div className="space-y-2">
+                        <div className="space-y-1 text-center">
+                            <CardTitle className="text-lg font-medium sm:text-xl">{"\u041f\u043b\u0430\u043d/\u0444\u0430\u043a\u0442"}</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                {activePlanBucket === "week" ? "\u041f\u043b\u0430\u043d \u043d\u0430 \u043d\u0435\u0434\u0435\u043b\u044e" : "\u041f\u043b\u0430\u043d \u043d\u0430 \u043c\u0435\u0441\u044f\u0446"}
                             </p>
                         </div>
-                        {allowPlanEditing && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    setDraftPlanTargets(planTargets);
-                                    setEditBucket(activePlanBucket);
-                                    setIsPlanDialogOpen(true);
-                                }}
-                            >
-                                {"\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u043f\u043b\u0430\u043d"}
-                            </Button>
-                        )}
+                        <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                            <span className="rounded-md border bg-muted/30 px-2.5 py-1 text-sm font-medium">
+                                {overallProgressPercent}%
+                            </span>
+                            {allowPlanEditing && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setDraftPlanTargets(planTargets);
+                                        setDraftPlanInputs(mapPlanTargetsToInputs(planTargets));
+                                        setEditBucket(activePlanBucket);
+                                        setIsPlanDialogOpen(true);
+                                    }}
+                                >
+                                    Установить план
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-3 pt-1">
-                    {planRows.map((row) => {
-                        const progressWidth = Math.min(Math.max(row.percent, 0), 140);
-                        return (
-                            <div key={row.key} className="space-y-1.5">
-                                <div className="flex items-center justify-between gap-2 text-xs">
-                                    <span className="text-muted-foreground">{row.label}</span>
-                                    <span className="font-medium">
+                <CardContent className="flex flex-1 flex-col gap-4 pt-1">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        {planRows.map((row) => {
+                            const progressWidth = Math.min(Math.max(row.percent, 0), 140);
+                            return (
+                                <div key={row.key} className="rounded-md border bg-muted/20 p-3">
+                                    <p className="text-[13px] text-muted-foreground">{row.label}</p>
+                                    <p className="mt-1 break-words text-lg font-medium">
                                         {row.fact.toLocaleString("ru-RU")} / {row.plan.toLocaleString("ru-RU")}
-                                    </span>
+                                    </p>
+                                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className={cn("h-full rounded-full transition-all", getProgressTone(row.percent))}
+                                            style={{ width: `${progressWidth}%` }}
+                                        />
+                                    </div>
+                                    <p className="mt-1 text-sm text-muted-foreground">{row.percent}%</p>
                                 </div>
-                                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                                    <div
-                                        className={cn("h-full rounded-full transition-all", getProgressTone(row.percent))}
-                                        style={{ width: `${progressWidth}%` }}
-                                    />
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
 
-                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs flex items-center justify-between">
-                        <span className="text-muted-foreground">{"\u041e\u0431\u0449\u0438\u0439 \u043f\u0440\u043e\u0433\u0440\u0435\u0441\u0441"}</span>
-                        <span className="font-semibold">{overallProgressPercent}%</span>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-md border bg-muted/20 px-3 py-2.5">
+                            <p className="text-[13px] text-muted-foreground">Выполнено метрик</p>
+                            <p className="text-lg font-medium tabular-nums">
+                                {completedMetricsCount}/{planRows.length}
+                            </p>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 px-3 py-2.5">
+                            <p className="text-[13px] text-muted-foreground">Осталось до плана</p>
+                            <p className="text-lg font-medium tabular-nums">{totalRemaining.toLocaleString("ru-RU")}</p>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 px-3 py-2.5">
+                            <p className="text-[13px] text-muted-foreground">Сверх плана</p>
+                            <p className="text-lg font-medium tabular-nums">{totalSurplus.toLocaleString("ru-RU")}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-md border bg-muted/15 px-3 py-3">
+                        <p className="text-sm text-muted-foreground">Что добрать до плана</p>
+                        {planGapRows.map((row) => (
+                            <div key={`${row.key}-gap`} className="flex items-center justify-between gap-2 text-sm">
+                                <span className="min-w-0 text-muted-foreground">{row.label}</span>
+                                {row.remaining > 0 ? (
+                                    <span className="font-medium text-amber-600">+{row.remaining.toLocaleString("ru-RU")}</span>
+                                ) : (
+                                    <span className="font-medium text-emerald-600">выполнено</span>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </CardContent>
             </Card>
+
+            <ConversionOverviewChart funnel={salesFunnel} className="h-full" />
 
             {allowPlanEditing && (
                 <Dialog open={isPlanDialogOpen} onOpenChange={setIsPlanDialogOpen}>
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle>{"\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u043f\u043b\u0430\u043d"}</DialogTitle>
-                            <DialogDescription>
-                                {"\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0446\u0435\u043b\u0438 \u0434\u043b\u044f \u043d\u0435\u0434\u0435\u043b\u0438 \u0438 \u043c\u0435\u0441\u044f\u0446\u0430."}
-                            </DialogDescription>
+                            <DialogTitle>Установить план</DialogTitle>
+                            <DialogDescription>Задайте цели для недели и месяца.</DialogDescription>
                         </DialogHeader>
 
                         <Tabs value={editBucket} onValueChange={(v) => setEditBucket(v as PlanBucket)}>
                             <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="week">{"\u041d\u0435\u0434\u0435\u043b\u044f"}</TabsTrigger>
-                                <TabsTrigger value="month">{"\u041c\u0435\u0441\u044f\u0446"}</TabsTrigger>
+                                <TabsTrigger value="week">Неделя</TabsTrigger>
+                                <TabsTrigger value="month">Месяц</TabsTrigger>
                             </TabsList>
                             {(["week", "month"] as PlanBucket[]).map((bucket) => (
                                 <TabsContent key={bucket} value={bucket} className="space-y-3 pt-3">
@@ -393,14 +384,34 @@ export function PersonalAnalyticsInsights({
                                                 id={`${bucket}-${key}`}
                                                 type="number"
                                                 min={0}
-                                                value={draftPlanTargets[bucket][key]}
+                                                value={draftPlanInputs[bucket][key]}
                                                 onChange={(e) => {
-                                                    const next = Number(e.target.value);
+                                                    const raw = e.target.value;
+                                                    if (!/^\d*$/.test(raw)) return;
+                                                    setDraftPlanInputs((prev) => ({
+                                                        ...prev,
+                                                        [bucket]: {
+                                                            ...prev[bucket],
+                                                            [key]: raw,
+                                                        },
+                                                    }));
+                                                }}
+                                                onBlur={() => {
+                                                    const normalized = normalizePlanValue(
+                                                        Number(draftPlanInputs[bucket][key] || 0)
+                                                    );
                                                     setDraftPlanTargets((prev) => ({
                                                         ...prev,
                                                         [bucket]: {
                                                             ...prev[bucket],
-                                                            [key]: normalizePlanValue(next),
+                                                            [key]: normalized,
+                                                        },
+                                                    }));
+                                                    setDraftPlanInputs((prev) => ({
+                                                        ...prev,
+                                                        [bucket]: {
+                                                            ...prev[bucket],
+                                                            [key]: String(normalized),
                                                         },
                                                     }));
                                                 }}
@@ -413,175 +424,32 @@ export function PersonalAnalyticsInsights({
 
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setIsPlanDialogOpen(false)}>
-                                {"\u041e\u0442\u043c\u0435\u043d\u0430"}
+                                Отмена
                             </Button>
                             <Button
                                 onClick={() => {
-                                    setPlanTargets(draftPlanTargets);
+                                    const normalizedTargets = mapInputsToPlanTargets(draftPlanInputs);
+                                    setDraftPlanTargets(normalizedTargets);
+                                    setDraftPlanInputs(mapPlanTargetsToInputs(normalizedTargets));
+                                    setPlanTargets(normalizedTargets);
                                     try {
-                                        window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(draftPlanTargets));
+                                        window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(normalizedTargets));
                                     } catch {
                                         // ignore localStorage write issues
                                     }
                                     setIsPlanDialogOpen(false);
                                 }}
                             >
-                                {"\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
+                                Сохранить
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
             )}
 
-            <Card>
+            <Card className="xl:col-span-2">
                 <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-3">
-                        <CardTitle className="text-sm">{"\u041a\u0430\u043b\u0435\u043d\u0434\u0430\u0440\u044c \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0438"}</CardTitle>
-                        <span className="text-[11px] text-muted-foreground">{calendarCaption}</span>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-1">
-                    {period !== "allTime" ? (
-                        <div className="grid grid-cols-7 gap-1.5">
-                            {weekDayLabels.map((dayLabel) => (
-                                <div key={dayLabel} className="pb-1 text-center text-[11px] font-medium text-muted-foreground">
-                                    {dayLabel}
-                                </div>
-                            ))}
-
-                            {Array.from({ length: dayOffset }).map((_, index) => (
-                                <div key={`empty-${index}`} className="h-16 rounded-md border border-dashed border-border/40" />
-                            ))}
-
-                            {calendarEntries.map((entry) => {
-                                const tone = getTrafficTone(entry.total);
-                                const isActive = selectedEntry?.key === entry.key;
-                                return (
-                                    <button
-                                        key={entry.key}
-                                        type="button"
-                                        onClick={() => openActivityDrilldown(entry.key)}
-                                        className={cn(
-                                            "h-16 rounded-md border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                            tone.className,
-                                            isActive && "ring-2 ring-primary/70"
-                                        )}
-                                        title={`${entry.labelLong}: ${entry.total.toLocaleString("ru-RU")} \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-semibold leading-none">{entry.dateNumber}</span>
-                                            <span className="text-[10px] font-semibold">{entry.total}</span>
-                                        </div>
-                                        <p className="mt-1 truncate text-[10px]">{tone.label}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                            {calendarEntries.map((entry) => {
-                                const tone = getTrafficTone(entry.total);
-                                const isActive = selectedEntry?.key === entry.key;
-                                return (
-                                    <button
-                                        key={entry.key}
-                                        type="button"
-                                        onClick={() => openActivityDrilldown(entry.key)}
-                                        className={cn(
-                                            "h-14 rounded-md border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                            tone.className,
-                                            isActive && "ring-2 ring-primary/70"
-                                        )}
-                                    >
-                                        <p className="truncate text-xs font-medium">{entry.labelShort}</p>
-                                        <p className="mt-1 text-xs font-semibold">{entry.total.toLocaleString("ru-RU")}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full bg-rose-500" />
-                                {"0 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439"}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full bg-amber-500" />
-                                {"1-4 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0438"}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                                {"5+ \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439"}
-                            </span>
-                        </div>
-
-                    {selectedEntry && (
-                        <div className="rounded-lg border bg-muted/30 p-2.5">
-                            <p className="text-xs font-medium">{selectedEntry.labelLong}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                                <span>{"\u0412\u0441\u0435\u0433\u043e: "}{selectedEntry.total.toLocaleString("ru-RU")}</span>
-                                <span>{"\u0417\u0432\u043e\u043d\u043a\u0438: "}{selectedEntry.calls.toLocaleString("ru-RU")}</span>
-                                <span>{"\u0427\u0430\u0442\u044b: "}{selectedEntry.chats.toLocaleString("ru-RU")}</span>
-                                <span>{"\u041f\u043e\u0434\u0431\u043e\u0440\u043a\u0438: "}{selectedEntry.selections.toLocaleString("ru-RU")}</span>
-                            </div>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            <Dialog open={isActivityDrilldownOpen} onOpenChange={setIsActivityDrilldownOpen}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>
-                            {selectedEntry
-                                ? `\u0421\u043e\u0441\u0442\u0430\u0432 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439: ${selectedEntry.labelLong}`
-                                : "\u0421\u043e\u0441\u0442\u0430\u0432 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439"}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {selectedEntry
-                                ? `\u0412\u0441\u0435\u0433\u043e \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439: ${selectedEntry.total.toLocaleString("ru-RU")}`
-                                : "\u0412\u044b\u0431\u0435\u0440\u0438 \u0434\u0435\u043d\u044c \u0438\u043b\u0438 \u043c\u0435\u0441\u044f\u0446 \u0432 \u043a\u0430\u043b\u0435\u043d\u0434\u0430\u0440\u0435."}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {selectedEntry ? (
-                        <div className="grid gap-2 sm:grid-cols-3">
-                            <div className="rounded-md border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Звонки</p>
-                                <p className="text-lg font-semibold">{selectedEntry.calls.toLocaleString("ru-RU")}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {selectedEntry.total > 0
-                                        ? `${Math.round((selectedEntry.calls / selectedEntry.total) * 100)}% \u043e\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439`
-                                        : "\u2014"}
-                                </p>
-                            </div>
-                            <div className="rounded-md border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Подборки</p>
-                                <p className="text-lg font-semibold">{selectedEntry.selections.toLocaleString("ru-RU")}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {selectedEntry.total > 0
-                                        ? `${Math.round((selectedEntry.selections / selectedEntry.total) * 100)}% \u043e\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439`
-                                        : "\u2014"}
-                                </p>
-                            </div>
-                            <div className="rounded-md border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Чаты</p>
-                                <p className="text-lg font-semibold">{selectedEntry.chats.toLocaleString("ru-RU")}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {selectedEntry.total > 0
-                                        ? `${Math.round((selectedEntry.chats / selectedEntry.total) * 100)}% \u043e\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0435\u0439`
-                                        : "\u2014"}
-                                </p>
-                            </div>
-                        </div>
-                    ) : null}
-                </DialogContent>
-            </Dialog>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">{"\u0421\u0442\u0430\u0442\u0443\u0441\u044b \u043b\u0438\u0434\u043e\u0432 \u0432 \u0440\u0430\u0431\u043e\u0442\u0435"}</CardTitle>
+                    <CardTitle className="text-center text-base font-medium sm:text-lg">Статусы лидов в работе</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 pt-1">
                     {totalCount > 0 && (
@@ -600,61 +468,103 @@ export function PersonalAnalyticsInsights({
                                 })}
                             </div>
                             <p className="text-[11px] text-muted-foreground">
-                                {"\u0412\u0441\u0435\u0433\u043e \u043b\u0438\u0434\u043e\u0432 \u0432 \u0432\u043e\u0440\u043e\u043d\u043a\u0435: "}
-                                {totalCount.toLocaleString("ru-RU")}
+                                Всего лидов в воронке: {totalCount.toLocaleString("ru-RU")}
                             </p>
                         </div>
                     )}
 
-                    <div className="space-y-2">
-                        {stageRows.map((row) => {
-                            const width = Math.max(8, (row.count / stageMax) * 100);
-                            return (
-                                <div key={row.id} className="space-y-1">
-                                    <div className="flex items-center justify-between gap-2 text-xs">
-                                        <span className="truncate text-muted-foreground">{row.name}</span>
-                                        <span className="font-medium">{row.count.toLocaleString("ru-RU")}</span>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                        {columnRows.map((row) => (
+                            <div key={row.id} className="rounded-md border bg-muted/20 px-3 py-2">
+                                <div className="flex min-w-0 items-start justify-between gap-2">
+                                    <div className="flex min-w-0 items-start gap-2">
+                                        <span className={cn("h-2 w-2 shrink-0 rounded-full", statusToneByColumn[row.id] ?? "bg-primary")} />
+                                        <span className="min-w-0 break-words text-xs leading-tight text-foreground">{row.name}</span>
                                     </div>
-                                    <div className="h-1.5 rounded-full bg-muted">
-                                        <div
-                                            className={cn(
-                                                "h-full rounded-full",
-                                                statusToneByColumn[row.columnId] ?? "bg-primary"
-                                            )}
-                                            style={{ width: `${width}%` }}
-                                        />
-                                    </div>
+                                    <span className="shrink-0 text-xs font-medium tabular-nums">{row.share}%</span>
                                 </div>
-                            );
-                        })}
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                    {row.count.toLocaleString("ru-RU")} лидов, {statusHintByColumn[row.id] ?? "этап воронки"}
+                                </p>
+                            </div>
+                        ))}
                     </div>
 
+                    {topStagesByFunnel.some((group) => group.rows.length > 0) && (
+                        <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                                <p className="min-w-0 text-xs text-muted-foreground">
+                                    {"\u0422\u043e\u043f-3 \u0441\u0442\u0430\u0442\u0443\u0441\u0430, \u0433\u0434\u0435 \u0437\u0430\u0441\u0442\u0440\u0435\u0432\u0430\u044e\u0442 \u043b\u0438\u0434\u044b, \u043f\u043e \u043a\u0430\u0436\u0434\u043e\u0439 \u0432\u043e\u0440\u043e\u043d\u043a\u0435"}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground sm:text-right">
+                                    {"\u0447\u0435\u043c \u0434\u043b\u0438\u043d\u043d\u0435\u0435 \u043f\u043e\u043b\u043e\u0441\u0430, \u0442\u0435\u043c \u0432\u044b\u0448\u0435 \u043d\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0432\u043d\u0443\u0442\u0440\u0438 \u0432\u043e\u0440\u043e\u043d\u043a\u0438"}
+                                </p>
+                            </div>
+                            <div className="grid gap-2 lg:grid-cols-2">
+                                {topStagesByFunnel.map((group) => (
+                                    <div key={group.boardId} className="min-w-0 space-y-2 rounded-md border bg-background/70 p-2.5">
+                                        <div className="flex min-w-0 items-start justify-between gap-2">
+                                            <p className="min-w-0 break-words text-xs font-medium leading-tight">{group.boardName}</p>
+                                            <p className="shrink-0 text-[11px] text-muted-foreground">
+                                                {group.totalCount.toLocaleString("ru-RU")} {"\u043b\u0438\u0434\u043e\u0432"}
+                                            </p>
+                                        </div>
+                                        {group.rows.length > 0 ? (
+                                            group.rows.map((row, index) => {
+                                                const width = Math.max(10, (row.count / group.maxCount) * 100);
+                                                return (
+                                                    <div key={row.id} className="space-y-1.5">
+                                                        <div className="flex min-w-0 flex-col gap-0.5 text-xs sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                                                            <span className="min-w-0 break-words text-muted-foreground">
+                                                                {index + 1}. {row.name}
+                                                            </span>
+                                                            <span className="shrink-0 font-medium tabular-nums sm:text-right">
+                                                                {row.count.toLocaleString("ru-RU")} ({row.share}%)
+                                                            </span>
+                                                        </div>
+                                                        <div className="h-1.5 rounded-full bg-muted">
+                                                            <div
+                                                                className={cn(
+                                                                    "h-full rounded-full",
+                                                                    statusToneByColumn[row.columnId] ?? "bg-primary"
+                                                                )}
+                                                                style={{ width: `${width}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">
+                                                {"\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u043e \u0441\u0442\u0430\u0442\u0443\u0441\u0430\u043c"}
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     {columnRows.length > 0 && (
                         <div className="space-y-2 rounded-lg border bg-muted/25 p-3">
                             <div className="grid gap-2 sm:grid-cols-2">
-                                <div>
-                                    <p className="text-[11px] text-muted-foreground">
-                                        {"\u041a\u043e\u043b\u043e\u043d\u043e\u043a \u0432 \u0432\u043e\u0440\u043e\u043d\u043a\u0435"}
+                                <div className="rounded-md border bg-background/70 px-3 py-2.5">
+                                    <p className="text-xs text-muted-foreground">
+                                        <HintLabel
+                                            label="Колонок в воронке"
+                                            hint="Сколько основных колонок сейчас участвует в этой воронке. Например: В работе, Отказ, Купили."
+                                        />
                                     </p>
-                                    <p className="text-base font-semibold">{columnRows.length}</p>
+                                    <p className="text-lg font-medium tabular-nums">{columnRows.length}</p>
                                 </div>
-                                <div>
-                                    <p className="text-[11px] text-muted-foreground">
-                                        {"\u0421\u0440\u0435\u0434\u043d\u044f\u044f \u043d\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0443"}
+                                <div className="rounded-md border bg-background/70 px-3 py-2.5">
+                                    <p className="text-xs text-muted-foreground">
+                                        <HintLabel
+                                            label="Средняя нагрузка на колонку"
+                                            hint="Среднее количество лидов на одну колонку. Формула: все лиды в воронке / количество колонок."
+                                        />
                                     </p>
-                                    <p className="text-base font-semibold">{averageColumnLoad.toLocaleString("ru-RU")}</p>
+                                    <p className="text-lg font-medium tabular-nums">{averageColumnLoad.toLocaleString("ru-RU")}</p>
                                 </div>
-                            </div>
-
-                            <div className="space-y-1.5 pt-1">
-                                {columnRows.map((row) => (
-                                    <div key={row.id} className="flex items-center justify-between gap-2 text-xs">
-                                        <span className="truncate text-muted-foreground">{row.name}</span>
-                                        <span className="font-medium">
-                                            {row.count.toLocaleString("ru-RU")} ({row.share}%)
-                                        </span>
-                                    </div>
-                                ))}
                             </div>
                         </div>
                     )}
@@ -663,3 +573,26 @@ export function PersonalAnalyticsInsights({
         </div>
     );
 }
+
+function HintLabel({ label, hint }: { label: string; hint: string }) {
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span
+                    className="cursor-help decoration-dotted underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    tabIndex={0}
+                >
+                    {label}
+                </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6} className="max-w-[260px] text-center leading-relaxed">
+                {hint}
+            </TooltipContent>
+        </Tooltip>
+    );
+}
+
+
+
+
+

@@ -41,20 +41,20 @@ export function LeadsChart({ data, period, onPeriodChange }: LeadsChartProps) {
     return (
         <Card className="w-full">
             <CardHeader className="px-4 pb-2 pt-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <CardTitle className="text-base font-medium">Динамика лидов</CardTitle>
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col items-center gap-2">
+                    <CardTitle className="text-center text-base">Динамика лидов</CardTitle>
+                    <div className="flex items-center justify-center gap-2">
                         <Tabs
                             value={period}
                             onValueChange={(v) => onPeriodChange(v as AnalyticsPeriod)}
                             className="h-auto"
                         >
-                            <TabsList className="h-auto flex-wrap p-0.5">
+                            <TabsList className="h-auto w-full flex-wrap justify-center p-0.5">
                                 {periods.map((p) => (
                                     <TabsTrigger
                                         key={p.value}
                                         value={p.value}
-                                        className="h-6 px-2 text-xs data-[state=active]:bg-background"
+                                        className="h-7 px-2 text-center text-sm font-normal whitespace-normal leading-tight data-[state=active]:bg-background sm:whitespace-nowrap"
                                     >
                                         {p.label}
                                     </TabsTrigger>
@@ -63,8 +63,8 @@ export function LeadsChart({ data, period, onPeriodChange }: LeadsChartProps) {
                         </Tabs>
                     </div>
                 </div>
-                <div className="mt-1">
-                    <span className="text-2xl font-bold">{totalLeads.toLocaleString("ru-RU")}</span>
+                <div className="mt-1 text-center">
+                    <span className="text-2xl font-medium">{totalLeads.toLocaleString("ru-RU")}</span>
                 </div>
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-2">

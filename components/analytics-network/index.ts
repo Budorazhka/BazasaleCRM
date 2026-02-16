@@ -9,6 +9,8 @@ export { DynamicKpiCards } from './dynamic-kpi-cards';
 export { LeadsChart } from './leads-chart';
 export { ActivityChart } from './activity-chart';
 export { ActivityComposition } from './activity-composition';
+export { ActivityCalendarCard } from './activity-calendar-card';
+export { ConversionOverviewChart } from './conversion-overview-chart';
 export { TopReferralsChart } from './top-referrals-chart';
 export { PartnersActivityDistribution } from './partners-activity-distribution';
 export { LeaderboardTable } from './leaderboard-table';

@@ -1,14 +1,17 @@
-"use client";
+﻿"use client";
 // [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
 // Смысл файла: главная страница аналитики сети; тут ты управляешь фильтрами, сортировкой и сборкой данных на экран.
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
 
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+    ActivityCalendarCard,
     ActivityChart,
+    ActivityComposition,
+    ConversionOverviewChart,
     DynamicKpiCards,
     FunnelKanban,
     LeaderboardTable,
@@ -35,7 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { getAnalyticsData, getPeriodDateRange } from "@/lib/mock/analytics-network";
 import type { ActivityMarker, AnalyticsPeriod, SortColumn, SortDirection } from "@/types/analytics";
-import { ArrowRight, Home, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Home, Users } from "lucide-react";
 
 const defaultPeriod: AnalyticsPeriod = "week";
 const defaultSortColumn: SortColumn = "leadsAdded";
@@ -43,23 +46,28 @@ const defaultSortDirection: SortDirection = "desc";
 
 export default function Page() {
     const router = useRouter();
+    const leftColumnRef = useRef<HTMLDivElement | null>(null);
     const [globalPeriod, setGlobalPeriod] = useState<AnalyticsPeriod>(defaultPeriod);
     const [leadsPeriod, setLeadsPeriod] = useState<AnalyticsPeriod>("week");
     const [activityPeriod, setActivityPeriod] = useState<AnalyticsPeriod>("week");
     const [topReferralsPeriod, setTopReferralsPeriod] = useState<AnalyticsPeriod>("week");
     const [engagementPeriod, setEngagementPeriod] = useState<AnalyticsPeriod>("week");
+    const [leftColumnHeight, setLeftColumnHeight] = useState<number | null>(null);
+    const [isDesktopLayout, setIsDesktopLayout] = useState(false);
 
     const [sortColumn, setSortColumn] = useState<SortColumn>(defaultSortColumn);
     const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortDirection);
     const [searchQuery, setSearchQuery] = useState("");
     const [onlyOnline, setOnlyOnline] = useState(false);
-    const [activeLast7, setActiveLast7] = useState(false);
+    const [inactiveLast7, setInactiveLast7] = useState(false);
     const [selectedActivityMarker, setSelectedActivityMarker] = useState<ActivityMarker | null>(null);
 
     const globalAnalytics = useMemo(() => getAnalyticsData(globalPeriod), [globalPeriod]);
     const todayAnalytics = useMemo(() => getAnalyticsData("week"), []);
     const leadsData = useMemo(() => getAnalyticsData(leadsPeriod).leadsTimeseries, [leadsPeriod]);
     const activityData = useMemo(() => getAnalyticsData(activityPeriod).activityTimeseries, [activityPeriod]);
+    const monthCalendarData = useMemo(() => getAnalyticsData("month").activityTimeseries, []);
+    const allTimeCalendarData = useMemo(() => getAnalyticsData("allTime").activityTimeseries, []);
     const topReferralsPartners = useMemo(
         () => getAnalyticsData(topReferralsPeriod).partners,
         [topReferralsPeriod]
@@ -82,6 +90,7 @@ export default function Page() {
     );
 
     const range = useMemo(() => getPeriodDateRange(globalPeriod), [globalPeriod]);
+    const monthRangeForCalendar = useMemo(() => getPeriodDateRange("month"), []);
     const rangeLabel = useMemo(() => {
         const formatter = new Intl.DateTimeFormat("ru-RU", {
             month: "short",
@@ -101,12 +110,12 @@ export default function Page() {
         if (onlyOnline) {
             partners = partners.filter((partner) => partner.isOnline);
         }
-        if (activeLast7) {
-            partners = partners.filter((partner) => partner.onlineDaysLast7 > 0);
+        if (inactiveLast7) {
+            partners = partners.filter((partner) => partner.onlineDaysLast7 === 0);
         }
 
         return partners;
-    }, [globalAnalytics.partners, searchQuery, onlyOnline, activeLast7]);
+    }, [globalAnalytics.partners, searchQuery, onlyOnline, inactiveLast7]);
 
     const maxLeadsAdded = useMemo(
         () => Math.max(...filteredPartners.map((partner) => partner.leadsAdded), 1),
@@ -131,6 +140,10 @@ export default function Page() {
         () => globalAnalytics.funnels.find((funnel) => funnel.id === "broker"),
         [globalAnalytics.funnels]
     );
+    const salesFunnel = useMemo(
+        () => globalAnalytics.funnels.find((funnel) => funnel.id === "sales") ?? globalAnalytics.funnels[0],
+        [globalAnalytics.funnels]
+    );
     const partnersCount = partnersFunnel?.totalCount ?? 0;
     const handleSortChange = (column: SortColumn) => {
         if (column === sortColumn) {
@@ -144,10 +157,53 @@ export default function Page() {
     const handleResetFilters = () => {
         setSearchQuery("");
         setOnlyOnline(false);
-        setActiveLast7(false);
+        setInactiveLast7(false);
         setSortColumn(defaultSortColumn);
         setSortDirection(defaultSortDirection);
     };
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(min-width: 1024px)");
+        const syncBreakpoint = () => setIsDesktopLayout(mediaQuery.matches);
+
+        syncBreakpoint();
+        if (typeof mediaQuery.addEventListener === "function") {
+            mediaQuery.addEventListener("change", syncBreakpoint);
+            return () => mediaQuery.removeEventListener("change", syncBreakpoint);
+        }
+
+        mediaQuery.addListener(syncBreakpoint);
+        return () => mediaQuery.removeListener(syncBreakpoint);
+    }, []);
+
+    useEffect(() => {
+        if (!isDesktopLayout) {
+            setLeftColumnHeight(null);
+            return;
+        }
+
+        const leftColumnNode = leftColumnRef.current;
+        if (!leftColumnNode) return;
+
+        const syncHeight = () => {
+            setLeftColumnHeight(Math.round(leftColumnNode.getBoundingClientRect().height));
+        };
+
+        syncHeight();
+
+        const observer =
+            typeof ResizeObserver !== "undefined"
+                ? new ResizeObserver(() => syncHeight())
+                : null;
+
+        observer?.observe(leftColumnNode);
+        window.addEventListener("resize", syncHeight);
+
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener("resize", syncHeight);
+        };
+    }, [isDesktopLayout]);
 
     return (
         <div className="w-full space-y-4 overflow-x-hidden px-3 py-4 sm:px-5">
@@ -157,7 +213,7 @@ export default function Page() {
                         <span>{rangeLabel}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <h1 className="text-2xl font-semibold">Аналитика сети</h1>
+                        <h1 className="text-2xl font-medium">Аналитика сети</h1>
                         <Badge variant="outline" className="text-xs">
                             {globalAnalytics.periodLabel}
                         </Badge>
@@ -166,13 +222,23 @@ export default function Page() {
                 <div className="flex flex-1 justify-center">
                     <AnalyticsNavLinks />
                 </div>
-                <div className="flex shrink-0">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <Button
+                        asChild
+                        size="sm"
+                        className="border border-emerald-500/35 bg-emerald-500/12 text-emerald-700 hover:bg-emerald-500/18 dark:text-emerald-300"
+                    >
+                        <Link href="/analytics" className="inline-flex items-center gap-1.5">
+                            <ArrowLeft className="size-4" />
+                            Вернуться в CRM
+                        </Link>
+                    </Button>
                     <PeriodTabs selectedPeriod={globalPeriod} onPeriodChange={setGlobalPeriod} />
                 </div>
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-                <div className="space-y-4 lg:sticky lg:top-24 self-start">
+            <div className="grid gap-5 lg:grid-cols-[360px_1fr] lg:items-stretch">
+                <div ref={leftColumnRef} className="space-y-4 lg:sticky lg:top-24 self-start">
                     <StaticKpiCards
                         data={globalAnalytics.staticKpi}
                         secondMetric={{ label: "Рефералы L2", value: level2ReferralsTotal }}
@@ -194,7 +260,7 @@ export default function Page() {
                                     </div>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-lg font-semibold">
+                                    <p className="text-lg font-medium">
                                         {globalAnalytics.staticKpi.totalListings.toLocaleString("ru-RU")}
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">Количество объектов</p>
@@ -215,7 +281,7 @@ export default function Page() {
                                     </div>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-lg font-semibold">{partnersCount.toLocaleString("ru-RU")}</p>
+                                    <p className="text-lg font-medium">{partnersCount.toLocaleString("ru-RU")}</p>
                                     <p className="text-[11px] text-muted-foreground">Количество партнёров</p>
                                     <p className="text-[10px] text-muted-foreground/80">
                                         за {globalAnalytics.periodLabel.toLocaleLowerCase("ru-RU")}
@@ -226,7 +292,14 @@ export default function Page() {
                     </div>
                 </div>
 
-                <div className="space-y-4">
+                <div
+                    className="flex min-h-0 flex-col gap-4"
+                    style={
+                        isDesktopLayout && leftColumnHeight
+                            ? { height: `${leftColumnHeight}px` }
+                            : undefined
+                    }
+                >
                     <div className="flex flex-col gap-3 rounded-lg border bg-card px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-4">
                         <div className="min-w-0 flex-1">
                             <Input
@@ -243,9 +316,9 @@ export default function Page() {
                             </Label>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Switch id="active-last7" checked={activeLast7} onCheckedChange={setActiveLast7} />
-                            <Label htmlFor="active-last7" className="text-xs font-normal">
-                                Активные за 7 дней
+                            <Switch id="inactive-last7" checked={inactiveLast7} onCheckedChange={setInactiveLast7} />
+                            <Label htmlFor="inactive-last7" className="text-xs font-normal">
+                                Не активные 7 дней
                             </Label>
                         </div>
                     </div>
@@ -258,6 +331,7 @@ export default function Page() {
                         sortDirection={sortDirection}
                         onSortChange={handleSortChange}
                         onResetFilters={handleResetFilters}
+                        className="lg:min-h-0 lg:flex-1"
                     />
                 </div>
             </div>
@@ -265,6 +339,19 @@ export default function Page() {
             <div className="grid gap-4 lg:grid-cols-2">
                 <LeadsChart data={leadsData} period={leadsPeriod} onPeriodChange={setLeadsPeriod} />
                 <ActivityChart data={activityData} period={activityPeriod} onPeriodChange={setActivityPeriod} />
+            </div>
+
+            <div className="grid items-start gap-4 xl:grid-cols-12">
+                <ActivityCalendarCard
+                    period={globalPeriod}
+                    range={range}
+                    monthRange={monthRangeForCalendar}
+                    monthData={monthCalendarData}
+                    allTimeData={allTimeCalendarData}
+                    className="xl:col-span-6 h-full"
+                />
+                <ActivityComposition data={globalAnalytics.dynamicKpi} className="xl:col-span-3 h-full" />
+                <ConversionOverviewChart funnel={salesFunnel} className="xl:col-span-3 h-full" />
             </div>
 
             <div className="space-y-3">
@@ -337,3 +424,5 @@ export default function Page() {
         </div>
     );
 }
+
+

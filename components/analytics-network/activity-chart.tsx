@@ -34,7 +34,7 @@ const chartConfig = {
         color: "hsl(187, 85%, 53%)",
     },
     selections: {
-        label: "Подборки",
+        label: "Рассылки",
         color: "hsl(330, 81%, 60%)",
     },
 } satisfies ChartConfig;
@@ -42,7 +42,7 @@ const chartConfig = {
 const legendItems = [
     { key: "calls", label: "Звонки", color: "bg-orange-500" },
     { key: "chats", label: "Чаты", color: "bg-cyan-400" },
-    { key: "selections", label: "Подборки", color: "bg-pink-400" },
+    { key: "selections", label: "Рассылки", color: "bg-pink-400" },
 ];
 
 const periods: { value: AnalyticsPeriod; label: string }[] = [
@@ -72,19 +72,19 @@ export function ActivityChart({ data, period, onPeriodChange }: ActivityChartPro
         <Card className="w-full">
             <CardHeader className="px-4 pb-2 pt-3">
                 <div className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <CardTitle className="text-base font-medium">Активность</CardTitle>
+                    <CardTitle className="text-center text-base">Активность</CardTitle>
+                    <div className="flex justify-center">
                         <Tabs
                             value={period}
                             onValueChange={(v) => onPeriodChange(v as AnalyticsPeriod)}
                             className="h-auto"
                         >
-                            <TabsList className="h-auto flex-wrap p-0.5">
+                            <TabsList className="h-auto w-full flex-wrap justify-center p-0.5">
                                 {periods.map((p) => (
                                     <TabsTrigger
                                         key={p.value}
                                         value={p.value}
-                                        className="h-6 px-2 text-xs data-[state=active]:bg-background"
+                                        className="h-7 px-2 text-center text-sm font-normal whitespace-normal leading-tight data-[state=active]:bg-background sm:whitespace-nowrap"
                                     >
                                         {p.label}
                                     </TabsTrigger>
@@ -95,10 +95,10 @@ export function ActivityChart({ data, period, onPeriodChange }: ActivityChartPro
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-1">
-                            <span className="text-2xl font-bold">{totalActivity.toLocaleString("ru-RU")}</span>
+                            <span className="text-2xl font-medium">{totalActivity.toLocaleString("ru-RU")}</span>
                             <span className="text-xs text-muted-foreground self-end mb-1">действий</span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             {legendItems.map((item) => {
                                 const isActive = activeSeries.includes(item.key);
                                 return (

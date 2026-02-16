@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 // [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
 // Смысл файла: таблица лидеров/партнёров; тут ты управляешь колонками, сортировкой и переходами в карточку партнёра.
@@ -48,6 +48,7 @@ interface LeaderboardTableProps {
     sortDirection: SortDirection;
     onSortChange: (column: SortColumn) => void;
     onResetFilters?: () => void;
+    className?: string;
 }
 
 interface ColumnConfig {
@@ -103,6 +104,7 @@ export function LeaderboardTable({
     sortDirection,
     onSortChange,
     onResetFilters,
+    className,
 }: LeaderboardTableProps) {
     const router = useRouter();
 
@@ -114,7 +116,7 @@ export function LeaderboardTable({
                 </CardHeader>
                 <CardContent className="px-6 pb-6">
                     <div className="flex flex-col items-center gap-2 text-center py-10">
-                        <p className="text-base font-semibold">Ничего не найдено</p>
+                        <p className="text-base font-medium">Ничего не найдено</p>
                         <p className="text-sm text-muted-foreground">
                             Попробуйте изменить поиск или фильтры.
                         </p>
@@ -130,11 +132,11 @@ export function LeaderboardTable({
     }
 
     return (
-        <Card className="w-full overflow-hidden">
+        <Card className={cn("h-full min-h-0 w-full overflow-hidden", className)}>
             <CardHeader className="pb-3">
                 <CardTitle className="text-center">Лидерборд: Мои рефералы L1</CardTitle>
             </CardHeader>
-            <CardContent className="px-0 pb-0">
+            <CardContent className="px-0 pb-0 md:flex md:min-h-0 md:flex-1 md:flex-col">
                 <div className="space-y-2 px-3 pb-3 md:hidden">
                     {partners.map((partner) => (
                         <MobilePartnerCard
@@ -145,8 +147,8 @@ export function LeaderboardTable({
                         />
                     ))}
                 </div>
-                <div className="hidden overflow-x-auto md:block">
-                    <div className="h-[600px] max-h-[calc(100vh-320px)] overflow-y-auto">
+                <div className="hidden overflow-x-auto md:block md:min-h-0 md:flex-1">
+                    <div className="h-[600px] max-h-[calc(100vh-320px)] overflow-y-auto md:h-full md:max-h-none">
                         <Table className="min-w-[860px]">
                             <TableHeader className="sticky top-0 z-10 bg-background">
                                 <TableRow className="hover:bg-transparent bg-background">
@@ -212,7 +214,7 @@ export function LeaderboardTable({
                                                 <MessageCircle className="h-3.5 w-3.5 text-cyan-500" />
                                                     <span className="text-sm">{partner.chatOpens.toLocaleString("ru-RU")}</span>
                                             </div>
-                                            <div className="flex items-center gap-1" title="Подборки">
+                                            <div className="flex items-center gap-1" title="Рассылки">
                                                 <LayoutList className="h-3.5 w-3.5 text-pink-500" />
                                                     <span className="text-sm">{partner.selectionsCreated.toLocaleString("ru-RU")}</span>
                                             </div>
@@ -274,9 +276,11 @@ export function LeaderboardTable({
                                                     <DropdownMenuItem className="lg:hidden text-muted-foreground" disabled>
                                                         Комиссия: ${partner.commissionUsd.toLocaleString("ru-RU")}
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem className="cursor-pointer">
-                                                        <Eye className="h-4 w-4 mr-2" />
-                                                        Посмотреть профиль
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/analytics/partners/${partner.id}`}>
+                                                            <Eye className="h-4 w-4 mr-2" />
+                                                            Посмотреть профиль
+                                                        </Link>
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem className="cursor-pointer">
                                                         <UserPlus className="h-4 w-4 mr-2" />
@@ -339,7 +343,7 @@ function MobilePartnerCard({
                     <MessageCircle className="h-3.5 w-3.5 text-cyan-500" />
                     {partner.chatOpens.toLocaleString("ru-RU")}
                 </span>
-                <span className="inline-flex items-center gap-1" title="Подборки">
+                <span className="inline-flex items-center gap-1" title="Рассылки">
                     <LayoutList className="h-3.5 w-3.5 text-pink-500" />
                     {partner.selectionsCreated.toLocaleString("ru-RU")}
                 </span>
@@ -351,3 +355,4 @@ function MobilePartnerCard({
         </div>
     );
 }
+

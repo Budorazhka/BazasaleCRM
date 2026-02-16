@@ -1,4 +1,4 @@
-// [DOC-RU]
+﻿// [DOC-RU]
 // Если ты меняешь этот файл, сначала держи прежний смысл метрик и полей, чтобы UI не разъехался.
 // Смысл файла: карточки динамических KPI за период; если ты добавляешь метрику, добавь ее и в типы, и в источник данных.
 // После правок ты проверяешь экран руками и сверяешь ключевые цифры/периоды.
@@ -69,7 +69,7 @@ const fullKpiConfig = [
     },
     {
         key: "selectionsCreated" as const,
-        label: "Подборки",
+        label: "Рассылки",
         icon: LayoutList,
         iconColor: "text-pink-500",
         iconBg: "bg-pink-500/10",
@@ -103,7 +103,7 @@ export function DynamicKpiCards({ data, todayData, periodLabel, variant = "full"
         <div className="space-y-2">
             <div className="flex items-center gap-2">
                 <h3 className="text-xs font-medium text-muted-foreground">Период:</h3>
-                <Badge variant="secondary" className="text-[11px]">
+                <Badge variant="secondary" className="text-xs">
                     {periodLabel}
                 </Badge>
             </div>
@@ -117,7 +117,7 @@ export function DynamicKpiCards({ data, todayData, periodLabel, variant = "full"
                         <Card key={kpi.key} className="p-3">
                             <CardContent className="p-0 flex flex-col gap-2">
                                 <div className="flex items-center justify-between">
-                                    <Badge className="bg-teal-400/10 text-teal-600 dark:text-teal-400 shadow-none text-[10px]">
+                                    <Badge className="bg-teal-400/10 text-teal-600 dark:text-teal-400 shadow-none text-[11px]">
                                         +{todayValue.toLocaleString("ru-RU")} за сегодня
                                     </Badge>
                                     <div className={`p-1.5 rounded-md ${kpi.iconBg}`}>
@@ -125,9 +125,9 @@ export function DynamicKpiCards({ data, todayData, periodLabel, variant = "full"
                                     </div>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-lg font-semibold text-foreground">{value.toLocaleString("ru-RU")}</p>
-                                    <p className="text-[11px] text-muted-foreground truncate">{kpi.label}</p>
-                                    <p className="text-[10px] text-muted-foreground/80">за {periodLabelLower}</p>
+                                    <p className="text-lg font-medium text-foreground">{value.toLocaleString("ru-RU")}</p>
+                                    <p className="text-xs text-muted-foreground truncate">{kpi.label}</p>
+                                    <p className="text-[11px] text-muted-foreground/80">за {periodLabelLower}</p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -137,3 +137,4 @@ export function DynamicKpiCards({ data, todayData, periodLabel, variant = "full"
         </div>
     );
 }
+
